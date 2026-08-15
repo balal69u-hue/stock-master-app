@@ -20,7 +20,7 @@
     <main class="max-w-6xl mx-auto px-4 py-12">
         <div class="text-center max-w-2xl mx-auto mb-10">
             <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">Stock Keyword & Asset Research</h2>
-            <p class="text-slate-400 text-sm">Discover top-selling concepts, high-performing titles, and metadata instantly.</p>
+            <p class="text-slate-400 text-sm">Discover trending assets, estimated downloads, and rankable metadata.</p>
             
             <div class="mt-8 flex flex-col sm:flex-row gap-2">
                 <input id="searchInput" type="text" placeholder="e.g. laptop icon, sunset landscape, business ai" 
@@ -34,73 +34,69 @@
 
         <div id="loader" class="hidden text-center py-16">
             <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-slate-700 border-t-blue-500 mb-3"></div>
-            <p class="text-slate-400 text-sm">Fetching stock assets & metadata...</p>
+            <p class="text-slate-400 text-sm">Analyzing marketplace data...</p>
         </div>
 
-        <div id="noticeBox" class="hidden max-w-xl mx-auto mb-8 p-4 rounded-xl text-xs text-center border"></div>
         <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
     </main>
 
     <script>
         async function fetchData() {
             const query = document.getElementById("searchInput").value.trim();
-            if(!query) return alert("Please type a keyword!");
+            if(!query) return alert("Please enter a keyword!");
 
             const grid = document.getElementById("resultsGrid");
             const loader = document.getElementById("loader");
-            const noticeBox = document.getElementById("noticeBox");
             
             grid.innerHTML = "";
-            noticeBox.className = "hidden max-w-xl mx-auto mb-8 p-4 rounded-xl text-xs text-center border";
-            noticeBox.innerText = "";
             loader.classList.remove("hidden");
 
             try {
                 const res = await fetch(`/api/search?keyword=${encodeURIComponent(query)}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 loader.classList.add("hidden");
 
-                if (!data.results || data.results.length === 0) {
-                    noticeBox.className = "max-w-xl mx-auto mb-8 p-4 rounded-xl text-xs text-center border bg-slate-900 border-slate-800 text-slate-400 block";
-                    noticeBox.innerText = `No assets found for "${query}". Try another search term.`;
-                    return;
-                }
-
                 data.results.forEach(item => {
                     const card = document.createElement("div");
-                    card.className = "bg-slate-900/90 border border-slate-800/80 rounded-2xl overflow-hidden shadow-lg hover:border-slate-700 transition flex flex-col justify-between group";
+                    card.className = "bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-lg hover:border-slate-700 transition flex flex-col justify-between group";
                     card.innerHTML = `
                         <div class="h-48 bg-slate-950 overflow-hidden relative">
-                            <img src="${item.thumbnail}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400'">
-                            <span class="absolute top-2 right-2 bg-slate-900/80 backdrop-blur text-[10px] text-blue-400 px-2 py-0.5 rounded border border-slate-700">Stock Asset</span>
+                            <img src="${item.thumbnail}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500'">
+                            <span class="absolute top-2 right-2 bg-slate-950/80 backdrop-blur text-[11px] font-semibold text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-500/30">
+                                🔥 ${item.downloads} dl
+                            </span>
                         </div>
                         <div class="p-4 flex flex-col justify-between flex-grow">
-                            <p class="text-xs text-slate-300 font-medium line-clamp-2 mb-4 leading-relaxed" title="${item.title}">${item.title}</p>
-                            <button onclick="copyText('${item.title.replace(/'/g, "\\'")}', this)" 
-                                class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 rounded-lg font-semibold transition border border-slate-700/50">
-                                Copy Title
-                            </button>
+                            <p class="text-xs text-slate-200 font-medium line-clamp-2 mb-4 leading-relaxed" title="${item.title}">${item.title}</p>
+                            <div class="grid grid-cols-2 gap-2 mt-auto">
+                                <button onclick="copyText('${item.title.replace(/'/g, "\\'")}', this, 'Copied Title!')" 
+                                    class="w-full text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-lg font-semibold transition border border-slate-700">
+                                    Copy Title
+                                </button>
+                                <button onclick="copyText('${item.tags.replace(/'/g, "\\'")}', this, 'Copied Tags!')" 
+                                    class="w-full text-[11px] bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 py-2 rounded-lg font-semibold transition border border-blue-500/30">
+                                    Copy Tags
+                                </button>
+                            </div>
                         </div>
                     `;
                     grid.appendChild(card);
                 });
             } catch (err) {
                 loader.classList.add("hidden");
-                noticeBox.className = "max-w-xl mx-auto mb-8 p-4 rounded-xl text-xs text-center border bg-rose-500/10 border-rose-500/20 text-rose-400 block";
-                noticeBox.innerText = "Connecting to backend... Please wait 10 seconds and try again.";
+                alert("Please wait 10 seconds and search again.");
             }
         }
 
-        function copyText(text, btn) {
+        function copyText(text, btn, successMsg) {
             navigator.clipboard.writeText(text);
             const originalText = btn.innerText;
-            btn.innerText = "✓ Copied!";
+            btn.innerText = successMsg;
             btn.classList.add("bg-emerald-600", "text-white");
             setTimeout(() => {
                 btn.innerText = originalText;
                 btn.classList.remove("bg-emerald-600", "text-white");
-            }, 2000);
+            }, 1800);
         }
     </script>
 </body>
