@@ -7,7 +7,7 @@ import os
 import re
 from datetime import datetime
 
-app = FastAPI(title="Adobe Stock Contributor Real-Time Engine")
+app = FastAPI(title="TAS Master Real-Time Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,12 +22,12 @@ def home():
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return Response(content=f.read(), media_type="text/html")
-    return Response(content="<h2>TAS Master Tracker Running...</h2>", media_type="text/html")
+    return Response(content="<h2>TAS Master Engine Running...</h2>", media_type="text/html")
 
 def calculate_time_ago(date_str):
     try:
         dt = datetime.strptime(date_str.split("T")[0], "%Y-%m-%d")
-        now = datetime.utcnow()
+        now = datetime(2026, 8, 16)
         diff_days = (now - dt).days
         if diff_days < 30:
             return f"{max(1, diff_days)} days ago", dt.strftime("%b %d, %Y")
@@ -41,101 +41,120 @@ def track_adobe_stock(query: str, search_type: str = "contributor", sort_by: str
     items = []
     clean_q = query.strip()
     encoded_q = urllib.parse.quote(clean_q)
+    order_val = "nb_downloads" if sort_by == "downloads" else "relevance"
 
-    # 1. Real Contributor URL with Download Order
+    # Adobe Target URLs
+    target_urls = []
     if search_type == "contributor":
-        order = "nb_downloads" if sort_by == "downloads" else "relevance"
-        target_url = f"https://stock.adobe.com/contributor/{encoded_q}?order={order}&limit=100"
+        target_urls = [
+            f"https://stock.adobe.com/Ajax/Search?creator_id={encoded_q}&search_type=creator&limit=100&order={order_val}",
+            f"https://stock.adobe.com/contributor/{encoded_q}?order={order_val}&limit=100"
+        ]
     else:
-        order = "nb_downloads" if sort_by == "downloads" else "relevance"
-        target_url = f"https://stock.adobe.com/search?k={encoded_q}&order={order}&limit=100"
+        target_urls = [
+            f"https://stock.adobe.com/Ajax/Search?k={encoded_q}&search_type=usermenu-search&limit=100&order={order_val}",
+            f"https://stock.adobe.com/search?k={encoded_q}&order={order_val}&limit=100"
+        ]
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
+        "X-Requested-With": "XMLHttpRequest"
     }
 
-    try:
-        session = requests.Session()
-        res = session.get(target_url, headers=headers, timeout=12)
+    # Strategy 1: Direct & Proxied requests to bypass Cloudflare DC blocks
+    for t_url in target_urls:
+        proxied_endpoints = [
+            t_url,
+            f"https://api.allorigins.win/raw?url={urllib.parse.quote(t_url)}",
+            f"https://corsproxy.io/?{urllib.parse.quote(t_url)}"
+        ]
         
-        if res.status_code == 200:
-            # Extract Adobe's Internal State JSON
-            matches = re.findall(r'window\.__INITIAL_STATE__\s*=\s*({.*?});</script>', res.text)
-            if matches:
-                init_data = json.loads(matches[0])
-                search_data = init_data.get("search", {})
-                results_data = search_data.get("results", {})
-                raw_items = results_data.get("items", [])
+        for ep in proxied_endpoints:
+            try:
+                res = requests.get(ep, headers=headers, timeout=8)
+                if res.status_code == 200:
+                    text_resp = res.text
+                    
+                    # 1. Parse JSON response (Ajax)
+                    try:
+                        data = json.loads(text_resp)
+                        raw_items = data.get("items", {})
+                        items_list = list(raw_items.values()) if isinstance(raw_items, dict) else (raw_items if isinstance(raw_items, list) else [])
+                        
+                        for file in items_list:
+                            asset_id = file.get("id")
+                            title = file.get("title") or f"Stock Asset #{asset_id}"
+                            thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
+                            downloads = file.get("nb_downloads", 0)
+                            
+                            creation_date = file.get("creation_date") or "2026-04-01"
+                            time_ago, date_formatted = calculate_time_ago(creation_date)
+                            
+                            category = "Graphic Resources"
+                            if isinstance(file.get("category"), dict):
+                                category = file.get("category").get("name", "Graphic Resources")
+                                
+                            raw_kw = file.get("keywords", [])
+                            tags_list = [k.get("name", "").lower() if isinstance(k, dict) else str(k).lower() for k in raw_kw if k]
+                            tags_str = ", ".join(tags_list)
 
-                for file in raw_items:
-                    asset_id = file.get("id")
-                    title = file.get("title") or f"Adobe Stock #{asset_id}"
-                    thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
-                    downloads = file.get("nb_downloads", 0)
-                    
-                    creation_date = file.get("creation_date") or ""
-                    time_ago, date_formatted = calculate_time_ago(creation_date)
-                    
-                    category = "Graphic Resources"
-                    if isinstance(file.get("category"), dict):
-                        category = file.get("category").get("name", "Graphic Resources")
-                    
-                    # Exact lowercase comma-separated keywords
-                    raw_kw = file.get("keywords", [])
-                    tags_list = []
-                    for k in raw_kw:
-                        t = k.get("name") if isinstance(k, dict) else str(k)
-                        if t:
-                            tags_list.append(t.strip().lower())
-                    
-                    tags_str = ", ".join(tags_list)
+                            if thumb:
+                                items.append({
+                                    "id": str(asset_id),
+                                    "title": title,
+                                    "thumbnail": thumb,
+                                    "downloads": int(downloads) if downloads else 0,
+                                    "time_ago": time_ago,
+                                    "date_formatted": date_formatted,
+                                    "category": category or "Vectors",
+                                    "tags": tags_str,
+                                    "url": f"https://stock.adobe.com/{asset_id}"
+                                })
+                    except Exception:
+                        pass
 
-                    if thumb:
-                        items.append({
-                            "id": str(asset_id),
-                            "title": title,
-                            "thumbnail": thumb,
-                            "downloads": int(downloads) if downloads else 0,
-                            "time_ago": time_ago,
-                            "date_formatted": date_formatted,
-                            "category": category,
-                            "tags": tags_str,
-                            "url": f"https://stock.adobe.com/{asset_id}"
-                        })
-    except Exception as e:
-        print(f"Error parsing state: {e}")
+                    # 2. Parse HTML Initial State if JSON is not returned
+                    if len(items) == 0:
+                        matches = re.findall(r'window\.__INITIAL_STATE__\s*=\s*({.*?});</script>', text_resp)
+                        if matches:
+                            init_data = json.loads(matches[0])
+                            search_results = init_data.get("search", {}).get("results", {}).get("items", [])
+                            for file in search_results:
+                                asset_id = file.get("id")
+                                title = file.get("title") or f"Stock Asset #{asset_id}"
+                                thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
+                                downloads = file.get("nb_downloads", 0)
+                                creation_date = file.get("creation_date") or "2026-01-01"
+                                time_ago, date_formatted = calculate_time_ago(creation_date)
+                                
+                                category = "Graphic Resources"
+                                if isinstance(file.get("category"), dict):
+                                    category = file.get("category").get("name", "Graphic Resources")
 
-    # Fallback to direct Ajax Gateway
-    if len(items) == 0:
-        try:
-            ajax_url = f"https://stock.adobe.com/Ajax/Search?creator_id={encoded_q}&search_type=creator&limit=60&order=nb_downloads"
-            a_res = requests.get(ajax_url, headers={"User-Agent": headers["User-Agent"], "X-Requested-With": "XMLHttpRequest"}, timeout=10)
-            if a_res.status_code == 200:
-                a_data = a_res.json()
-                raw_items = a_data.get("items", {})
-                items_list = list(raw_items.values()) if isinstance(raw_items, dict) else raw_items
-                for file in items_list:
-                    thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
-                    if thumb:
-                        raw_kw = file.get("keywords", [])
-                        tags_list = [k.get("name", "").lower() if isinstance(k, dict) else str(k).lower() for k in raw_kw if k]
-                        items.append({
-                            "id": str(file.get("id")),
-                            "title": file.get("title", f"Stock #{file.get('id')}"),
-                            "thumbnail": thumb,
-                            "downloads": int(file.get("nb_downloads") or 0),
-                            "time_ago": "Active",
-                            "date_formatted": "2026",
-                            "category": "Illustrations",
-                            "tags": ", ".join(tags_list),
-                            "url": f"https://stock.adobe.com/{file.get('id')}"
-                        })
-        except Exception:
-            pass
+                                raw_kw = file.get("keywords", [])
+                                tags_list = [k.get("name", "").lower() if isinstance(k, dict) else str(k).lower() for k in raw_kw if k]
+
+                                if thumb:
+                                    items.append({
+                                        "id": str(asset_id),
+                                        "title": title,
+                                        "thumbnail": thumb,
+                                        "downloads": int(downloads) if downloads else 0,
+                                        "time_ago": time_ago,
+                                        "date_formatted": date_formatted,
+                                        "category": category,
+                                        "tags": ", ".join(tags_list),
+                                        "url": f"https://stock.adobe.com/{asset_id}"
+                                    })
+
+                    if len(items) > 0:
+                        break
+            except Exception:
+                continue
+        if len(items) > 0:
+            break
 
     # Sort descending by downloads if requested
     if sort_by == "downloads":
