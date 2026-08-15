@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 import requests
+import json
 import urllib.parse
 import os
 
-app = FastAPI(title="Adobe Stock Real-Time Analytics Engine")
+app = FastAPI(title="Adobe Stock Analytics Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,73 +20,76 @@ def home():
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return Response(content=f.read(), media_type="text/html")
-    return Response(content="System Active. Loading...", media_type="text/html")
+    return Response(content="<h2>System Active.</h2>", media_type="text/html")
 
 @app.get("/api/search")
 def search_adobe_stock(keyword: str):
     items = []
     encoded_kw = urllib.parse.quote(keyword)
     
-    # Direct Adobe Stock Engine Endpoint
-    adobe_api_url = (
-        f"https://stock.adobe.com/Rest/Libraries/1/Search/Files?"
-        f"locale=en_US&search_parameters[words]={encoded_kw}&"
-        f"search_parameters[limit]=24&"
-        f"search_parameters[order]=relevance&"
-        f"result_columns[]=id&"
-        f"result_columns[]=title&"
-        f"result_columns[]=thumbnail_url&"
-        f"result_columns[]=thumbnail_500_url&"
-        f"result_columns[]=keywords&"
-        f"result_columns[]=creator_name&"
-        f"result_columns[]=nb_downloads"
-    )
-    
-    headers = {
-        "x-product": "StockSearch/1.0",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
-    
+    # 1. Adobe Stock Public Gateway Endpoint
     try:
-        res = requests.get(adobe_api_url, headers=headers, timeout=10)
+        url = f"https://stock.adobe.com/Ajax/Search?k={encoded_kw}&search_type=usermenu-search&limit=24&order=relevance"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Referer": f"https://stock.adobe.com/search?k={encoded_kw}"
+        }
+        res = requests.get(url, headers=headers, timeout=9)
         if res.status_code == 200:
             data = res.json()
-            files = data.get("files", [])
-            
-            for file in files:
-                title = file.get("title") or f"{keyword.title()} Asset"
-                thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
-                asset_id = file.get("id")
-                creator = file.get("creator_name", "Contributor")
-                downloads = file.get("nb_downloads", 0)
+            items_raw = data.get("items", {})
+            if isinstance(items_raw, dict):
+                items_list = list(items_raw.values())
+            else:
+                items_list = items_raw
                 
-                # Tags list extraction
-                tags_list = []
-                for kw_item in file.get("keywords", []):
-                    if isinstance(kw_item, dict):
-                        tags_list.append(kw_item.get("name", "").lower())
-                    elif isinstance(kw_item, str):
-                        tags_list.append(kw_item.lower())
+            for item in items_list:
+                thumb = item.get("thumbnail_url") or item.get("thumbnail_500_url") or ""
+                title = item.get("title") or f"{keyword.title()} Stock Asset"
+                asset_id = item.get("id")
+                keywords_data = item.get("keywords", [])
                 
-                tags_str = ", ".join(tags_list[:25]) if tags_list else f"{keyword.lower()}, stock, vector, commercial"
+                tags = []
+                for kw in keywords_data:
+                    if isinstance(kw, dict):
+                        tags.append(kw.get("name", "").lower())
+                    elif isinstance(kw, str):
+                        tags.append(kw.lower())
+                
+                tags_str = ", ".join(tags[:25]) if tags else f"{keyword.lower()}, vector, background, graphic, stock"
                 
                 if thumb:
                     items.append({
                         "id": str(asset_id),
                         "title": title,
                         "thumbnail": thumb,
-                        "creator": creator,
-                        "downloads": f"{downloads:,}" if downloads else "High Demand",
                         "tags": tags_str,
                         "url": f"https://stock.adobe.com/{asset_id}"
                     })
     except Exception as e:
-        print(f"Error fetching Adobe Stock: {e}")
+        print("Ajax fetch error:", e)
+
+    # 2. Openverse Commercial Creative Stock Fallback
+    if len(items) == 0:
+        try:
+            ov_url = f"https://api.openverse.engineering/v1/images/?q={encoded_kw}&page_size=20"
+            res = requests.get(ov_url, headers={"User-Agent": "StockMaster/1.0"}, timeout=8).json()
+            for img in res.get("results", []):
+                tags_data = [t.get("name", "").lower() for t in img.get("tags", []) if isinstance(t, dict)]
+                items.append({
+                    "id": str(img.get("id")),
+                    "title": (img.get("title") or f"{keyword.title()} Stock Design").title(),
+                    "thumbnail": img.get("thumbnail") or img.get("url"),
+                    "tags": ", ".join(tags_data[:20]) if tags_data else f"{keyword.lower()}, design, commercial, asset",
+                    "url": img.get("foreign_landing_url", "#")
+                })
+        except Exception as e:
+            print("Fallback error:", e)
 
     return {
         "keyword": keyword,
-        "source": "Adobe Stock Real-Time",
         "count": len(items),
         "results": items
     }
