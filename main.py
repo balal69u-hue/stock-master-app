@@ -4,11 +4,11 @@ import requests
 import json
 import urllib.parse
 import os
-import re
 from datetime import datetime
 
 app = FastAPI(title="TAS Master Live Analytics Engine")
 
+# সব অরিজিন ও মেথড অ্যালাউ করা (CORS ফিক্স)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,7 +24,11 @@ def home():
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return Response(content=f.read(), media_type="text/html")
-    return Response(content="<h2>TAS Master Live Engine Active</h2>", media_type="text/html")
+    return Response(content="<h2>TAS Master Engine Running</h2>", media_type="text/html")
+
+@app.get("/api/ping")
+def ping():
+    return {"status": "active"}
 
 def calculate_time_ago(date_str):
     try:
@@ -45,7 +49,6 @@ def track_adobe_stock(query: str, search_type: str = "contributor", sort_by: str
     encoded_q = urllib.parse.quote(clean_q)
     order_val = "nb_downloads" if sort_by == "downloads" else "relevance"
 
-    # Direct Adobe Ajax Search
     if search_type == "contributor":
         adobe_target = f"https://stock.adobe.com/Ajax/Search?creator_id={encoded_q}&search_type=creator&limit=100&order={order_val}"
     else:
@@ -54,7 +57,7 @@ def track_adobe_stock(query: str, search_type: str = "contributor", sort_by: str
     scraper_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={urllib.parse.quote(adobe_target)}"
 
     try:
-        res = requests.get(scraper_url, timeout=25)
+        res = requests.get(scraper_url, timeout=40)
         if res.status_code == 200:
             data = res.json()
             raw_items = data.get("items", {})
