@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TAS Master - Portfolio Tracker</title>
+    <title>TAS Master - Live Portfolio Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -14,7 +14,7 @@
 </head>
 <body class="bg-[#f8fafc] text-slate-800 min-h-screen font-sans">
 
-    <!-- Top Navigation Bar -->
+    <!-- Topbar -->
     <header class="bg-white border-b border-slate-200 px-8 py-3 sticky top-0 z-50">
         <div class="max-w-[1600px] mx-auto flex justify-between items-center">
             <div class="flex items-center space-x-8">
@@ -28,22 +28,18 @@
                     <button onclick="switchSearchType('contributor')" id="navPortfolio" class="px-4 py-1.5 rounded-lg active-tab font-semibold transition">Portfolio Tracker</button>
                     <span class="px-4 py-1.5 text-slate-400 cursor-not-allowed">Market Analysis</span>
                     <span class="px-4 py-1.5 text-slate-400 cursor-not-allowed">Topic Finder</span>
-                    <span class="px-4 py-1.5 text-slate-400 cursor-not-allowed">Tools <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i></span>
                 </nav>
             </div>
 
             <div class="flex items-center space-x-3">
                 <div class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center font-bold text-xs">M</div>
                 <span class="text-sm font-medium text-slate-700">Md Balal Uddin</span>
-                <i class="fa-solid fa-chevron-down text-slate-400 text-xs cursor-pointer"></i>
             </div>
         </div>
     </header>
 
-    <!-- Main Container -->
     <main class="max-w-[1600px] mx-auto px-8 py-6">
-        
-        <!-- Search Input Bar -->
+        <!-- Search Input -->
         <div class="flex gap-2 max-w-full mx-auto mb-4">
             <div class="relative flex-grow">
                 <i class="fa-regular fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
@@ -56,44 +52,34 @@
             </button>
         </div>
 
-        <!-- Filter Controls Bar -->
-        <div class="flex flex-wrap items-center justify-between gap-4 py-2 border-b border-slate-200/80 mb-6 text-xs">
+        <!-- Controls Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-4 py-2 border-b border-slate-200 mb-6 text-xs">
             <div class="flex flex-wrap items-center gap-2">
                 <span class="text-slate-500 font-medium mr-1">Sort:</span>
                 <button onclick="setSort('relevance', this)" class="sort-btn px-3 py-1.5 rounded-md active-sort font-semibold">Relevance</button>
                 <button onclick="setSort('downloads', this)" class="sort-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium">Most Downloaded</button>
                 <button onclick="setSort('newest', this)" class="sort-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium">Newest</button>
-                <button class="px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-400">Featured</button>
-                <button class="px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-400">Undiscovered</button>
 
                 <div class="h-4 w-[1px] bg-slate-200 mx-2"></div>
 
                 <span class="text-slate-500 font-medium mr-1">Type:</span>
                 <button class="type-btn px-3 py-1.5 rounded-md active-type font-semibold">All</button>
-                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">Photos</button>
-                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">Vectors</button>
-                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">Illustrations</button>
-                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">Videos</button>
+                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600">Vectors</button>
+                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600">Illustrations</button>
             </div>
 
-            <div class="flex items-center gap-2">
-                <button class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-md text-xs font-medium">Filter results <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i></button>
-                <button class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-md text-xs font-medium"><i class="fa-solid fa-gear text-slate-400 mr-1"></i> AI Prompt Settings</button>
+            <div class="text-slate-500 text-xs font-semibold" id="resultInfo">
+                <span id="itemsCount" class="font-bold text-slate-900">0 items</span> — Contributor <span id="contributorIdText" class="font-bold text-slate-900">212986526</span>
             </div>
-        </div>
-
-        <!-- Result Summary -->
-        <div id="resultInfo" class="text-xs text-slate-600 font-medium mb-6">
-            <span id="itemsCount" class="font-bold text-slate-900">0 items</span> — Contributor <span id="contributorIdText" class="font-bold text-slate-900">212986526</span>
         </div>
 
         <!-- Loader -->
         <div id="loader" class="hidden text-center py-20">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-red-600 mb-3"></div>
-            <p class="text-slate-500 text-xs font-medium">Tracking live Adobe Stock assets & downloads...</p>
+            <p class="text-slate-500 text-xs font-medium">Connecting to live Adobe Stock metrics...</p>
         </div>
 
-        <!-- Cards Grid -->
+        <!-- Grid -->
         <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
     </main>
 
@@ -110,7 +96,7 @@
             if (type === "keyword") {
                 navK.className = "px-4 py-1.5 rounded-lg active-tab font-semibold transition";
                 navP.className = "px-4 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition";
-                input.placeholder = "Enter Keyword (e.g. christmas hat, beer mugs)...";
+                input.placeholder = "Enter Keyword (e.g. christmas hat, laptop icon)...";
                 input.value = "christmas hat";
             } else {
                 navP.className = "px-4 py-1.5 rounded-lg active-tab font-semibold transition";
@@ -151,7 +137,7 @@
                 itemsCount.innerText = `${data.results.length} items`;
 
                 if(data.results.length === 0) {
-                    grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found for this query.</div>`;
+                    grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found or ScraperAPI is proxying request. Click Track again in 5 seconds.</div>`;
                     return;
                 }
 
@@ -160,17 +146,12 @@
                     card.className = "bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between";
                     card.innerHTML = `
                         <div>
-                            <!-- Thumbnail -->
                             <div class="h-52 bg-slate-900/5 p-3 flex items-center justify-center relative group">
                                 <a href="${item.url}" target="_blank" class="w-full h-full flex items-center justify-center">
                                     <img src="${item.thumbnail}" alt="${item.title}" class="max-h-full max-w-full object-contain">
                                 </a>
-                                <div class="absolute top-3 right-3 bg-white/80 p-1 rounded border border-slate-200 text-slate-400 text-xs">
-                                    <i class="fa-regular fa-square"></i>
-                                </div>
                             </div>
 
-                            <!-- Metadata Area -->
                             <div class="p-4">
                                 <div class="flex items-start justify-between gap-2 mb-3">
                                     <p class="text-xs text-slate-800 font-semibold line-clamp-2 leading-relaxed" title="${item.title}">${item.title}</p>
@@ -201,7 +182,6 @@
                             </div>
                         </div>
 
-                        <!-- Keywords Footer -->
                         <div class="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[11px]">
                             <span class="text-slate-400">Keywords</span>
                             <button onclick="copySingle('${item.tags.replace(/'/g, "\\'")}', this)" class="text-slate-600 hover:text-red-600 font-medium flex items-center gap-1">
@@ -213,7 +193,7 @@
                 });
             } catch(e) {
                 loader.classList.add("hidden");
-                alert("Server connection error. Please click Track again.");
+                alert("Connection timed out. Please click Track again.");
             }
         }
 
