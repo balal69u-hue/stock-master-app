@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAS Stock Tracker - Free</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+
+    <!-- Navbar -->
+    <header class="border-b border-slate-800 p-4 bg-slate-950/50 backdrop-blur">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
+                StockTracker Pro
+            </h1>
+            <span class="text-xs bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20">Free Version</span>
+        </div>
+    </header>
+
+    <!-- Search Section -->
+    <main class="max-w-6xl mx-auto p-6">
+        <div class="text-center my-10">
+            <h2 class="text-3xl font-extrabold mb-2">Stock Keyword & Asset Research</h2>
+            <p class="text-slate-400 text-sm">Discover trending assets, titles, and download inspiration instantly</p>
+            
+            <div class="mt-6 flex max-w-xl mx-auto gap-2">
+                <input id="searchInput" type="text" placeholder="e.g. sunset landscape, business ai" 
+                    class="w-full px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 focus:outline-none focus:border-blue-500 text-sm">
+                <button onclick="fetchData()" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-medium text-sm transition">
+                    Search
+                </button>
+            </div>
+        </div>
+
+        <!-- Loader -->
+        <div id="loader" class="hidden text-center py-10 text-slate-400 text-sm">
+            Fetching live stock data...
+        </div>
+
+        <!-- Results Grid -->
+        <div id="resultsGrid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+    </main>
+
+    <script>
+        // আপনার Render-এর লাইভ ব্যাকএন্ড URL নিচে বসিয়ে দেবেন
+        const BACKEND_URL = "http://127.0.0.1:8000"; // বা https://your-backend.onrender.com
+
+        async function fetchData() {
+            const query = document.getElementById("searchInput").value.trim();
+            if(!query) return alert("Please enter a keyword!");
+
+            const grid = document.getElementById("resultsGrid");
+            const loader = document.getElementById("loader");
+            
+            grid.innerHTML = "";
+            loader.classList.remove("hidden");
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/search?keyword=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                loader.classList.add("hidden");
+
+                if (!data.results || data.results.length === 0) {
+                    grid.innerHTML = `<p class="col-span-full text-center text-slate-500">No results found.</p>`;
+                    return;
+                }
+
+                data.results.forEach(item => {
+                    const card = document.createElement("div");
+                    card.className = "bg-slate-800/60 border border-slate-700/50 rounded-xl overflow-hidden shadow hover:border-slate-600 transition";
+                    card.innerHTML = `
+                        <div class="h-44 bg-slate-950 overflow-hidden">
+                            <img src="${item.thumbnail || 'https://via.placeholder.com/300'}" class="w-full h-full object-cover">
+                        </div>
+                        <div class="p-4">
+                            <p class="text-xs text-slate-300 font-medium truncate mb-3" title="${item.title}">${item.title}</p>
+                            <button onclick="navigator.clipboard.writeText('${item.title.replace(/'/g, "\\'")}'); alert('Copied Title!');" 
+                                class="w-full text-xs bg-slate-700 hover:bg-slate-600 py-2 rounded font-semibold text-slate-200 transition">
+                                Copy Title
+                            </button>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (err) {
+                loader.classList.add("hidden");
+                alert("Error fetching data. Make sure backend is running.");
+            }
+        }
+    </script>
+</body>
+</html>
