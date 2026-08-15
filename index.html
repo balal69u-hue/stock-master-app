@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TAS Master - Live Portfolio Tracker</title>
+    <title>TAS Master - Portfolio Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -14,7 +14,7 @@
 </head>
 <body class="bg-[#f8fafc] text-slate-800 min-h-screen font-sans">
 
-    <!-- Topbar -->
+    <!-- Top Navigation Bar -->
     <header class="bg-white border-b border-slate-200 px-8 py-3 sticky top-0 z-50">
         <div class="max-w-[1600px] mx-auto flex justify-between items-center">
             <div class="flex items-center space-x-8">
@@ -38,8 +38,10 @@
         </div>
     </header>
 
+    <!-- Main Container -->
     <main class="max-w-[1600px] mx-auto px-8 py-6">
-        <!-- Search Input -->
+        
+        <!-- Search Input Bar -->
         <div class="flex gap-2 max-w-full mx-auto mb-4">
             <div class="relative flex-grow">
                 <i class="fa-regular fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
@@ -52,20 +54,13 @@
             </button>
         </div>
 
-        <!-- Controls Bar -->
-        <div class="flex flex-wrap items-center justify-between gap-4 py-2 border-b border-slate-200 mb-6 text-xs">
+        <!-- Filter Controls Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-4 py-2 border-b border-slate-200/80 mb-6 text-xs">
             <div class="flex flex-wrap items-center gap-2">
                 <span class="text-slate-500 font-medium mr-1">Sort:</span>
                 <button onclick="setSort('relevance', this)" class="sort-btn px-3 py-1.5 rounded-md active-sort font-semibold">Relevance</button>
                 <button onclick="setSort('downloads', this)" class="sort-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium">Most Downloaded</button>
                 <button onclick="setSort('newest', this)" class="sort-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium">Newest</button>
-
-                <div class="h-4 w-[1px] bg-slate-200 mx-2"></div>
-
-                <span class="text-slate-500 font-medium mr-1">Type:</span>
-                <button class="type-btn px-3 py-1.5 rounded-md active-type font-semibold">All</button>
-                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600">Vectors</button>
-                <button class="type-btn px-3 py-1.5 rounded-md bg-white border border-slate-200 text-slate-600">Illustrations</button>
             </div>
 
             <div class="text-slate-500 text-xs font-semibold" id="resultInfo">
@@ -76,16 +71,19 @@
         <!-- Loader -->
         <div id="loader" class="hidden text-center py-20">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-red-600 mb-3"></div>
-            <p class="text-slate-500 text-xs font-medium">Connecting to live Adobe Stock metrics...</p>
+            <p class="text-slate-500 text-xs font-medium">Tracking live Adobe Stock assets & downloads...</p>
         </div>
 
-        <!-- Grid -->
+        <!-- Cards Grid -->
         <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
     </main>
 
     <script>
         let currentType = "contributor";
         let currentSort = "relevance";
+
+        // Backend Host Auto-detection
+        const BACKEND_BASE = "https://stock-master-app-7079.onrender.com";
 
         function switchSearchType(type) {
             currentType = type;
@@ -96,7 +94,7 @@
             if (type === "keyword") {
                 navK.className = "px-4 py-1.5 rounded-lg active-tab font-semibold transition";
                 navP.className = "px-4 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition";
-                input.placeholder = "Enter Keyword (e.g. christmas hat, laptop icon)...";
+                input.placeholder = "Enter Keyword (e.g. christmas hat, beer mugs)...";
                 input.value = "christmas hat";
             } else {
                 navP.className = "px-4 py-1.5 rounded-lg active-tab font-semibold transition";
@@ -130,14 +128,15 @@
             contributorIdText.innerText = query;
 
             try {
-                const res = await fetch(`/api/track?query=${encodeURIComponent(query)}&search_type=${currentType}&sort_by=${currentSort}`);
+                const targetUrl = `${BACKEND_BASE}/api/track?query=${encodeURIComponent(query)}&search_type=${currentType}&sort_by=${currentSort}`;
+                const res = await fetch(targetUrl);
                 const data = await res.json();
                 loader.classList.add("hidden");
 
                 itemsCount.innerText = `${data.results.length} items`;
 
                 if(data.results.length === 0) {
-                    grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found or ScraperAPI is proxying request. Click Track again in 5 seconds.</div>`;
+                    grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found or server was sleeping. Please click Track again.</div>`;
                     return;
                 }
 
@@ -193,7 +192,7 @@
                 });
             } catch(e) {
                 loader.classList.add("hidden");
-                alert("Connection timed out. Please click Track again.");
+                alert("Server is waking up (Render free tier). Please wait 15 seconds and click Track again.");
             }
         }
 
