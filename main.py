@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
+import os
 
 app = FastAPI(title="Stock Analytics API")
 
@@ -14,10 +16,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# হোমপেজে সরাসরি ওয়েবসাইট UI (index.html) দেখাবে
 @app.get("/")
 def home():
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
     return {"status": "running", "message": "Stock Tracker API is live!"}
 
+# সার্চ এপিআই ইঞ্জিন
 @app.get("/api/search")
 def search_stock(keyword: str):
     try:
@@ -26,13 +32,13 @@ def search_stock(keyword: str):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         url = f"https://stock.adobe.com/search?k={encoded_kw}"
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=12)
         
         soup = BeautifulSoup(response.text, "html.parser")
         items = []
         
         cells = soup.find_all("div", {"data-t": "search-result-cell"})
-        for cell in cells[:12]:
+        for cell in cells[:16]:
             img_tag = cell.find("img")
             link_tag = cell.find("a", href=True)
             
