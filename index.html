@@ -71,7 +71,7 @@
         <!-- Loader -->
         <div id="loader" class="hidden text-center py-20">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-red-600 mb-3"></div>
-            <p class="text-slate-500 text-xs font-medium">Fetching real-time data from Adobe Stock...</p>
+            <p class="text-slate-500 text-xs font-medium">Tracking live portfolio assets from Adobe Stock...</p>
         </div>
 
         <!-- Cards Grid -->
@@ -79,7 +79,6 @@
     </main>
 
     <script>
-        const SCRAPER_API_KEY = "6c78c85ef4a662dae7a7655738afc93f";
         let currentType = "contributor";
         let currentSort = "relevance";
 
@@ -149,90 +148,100 @@
                 adobeTarget = `https://stock.adobe.com/Ajax/Search?k=${encodeURIComponent(query)}&search_type=usermenu-search&limit=100&order=${orderVal}`;
             }
 
-            const proxyEndpoint = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(adobeTarget)}`;
+            // Dual CORS Proxy Gateway
+            const proxies = [
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(adobeTarget)}`,
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(adobeTarget)}`
+            ];
 
-            try {
-                const res = await fetch(proxyEndpoint);
-                const data = await res.json();
-                loader.classList.add("hidden");
+            let rawItems = [];
 
-                let rawItems = data.items ? Object.values(data.items) : [];
-
-                if (currentSort === "downloads") {
-                    rawItems.sort((a, b) => (b.nb_downloads || 0) - (a.nb_downloads || 0));
+            for (const proxyUrl of proxies) {
+                try {
+                    const res = await fetch(proxyUrl);
+                    if (res.ok) {
+                        const data = await res.json();
+                        rawItems = data.items ? Object.values(data.items) : [];
+                        if (rawItems.length > 0) break;
+                    }
+                } catch (e) {
+                    console.log("Next proxy fallback...");
                 }
-
-                itemsCount.innerText = `${rawItems.length} items`;
-
-                if(rawItems.length === 0) {
-                    grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found for this query.</div>`;
-                    return;
-                }
-
-                rawItems.forEach(file => {
-                    const thumb = file.thumbnail_500_url || file.thumbnail_url;
-                    if(!thumb) return;
-
-                    const timeInfo = parseTimeAgo(file.creation_date);
-                    const tagArray = (file.keywords || []).map(k => (typeof k === 'object' ? k.name : k).toLowerCase());
-                    const tagsStr = tagArray.join(", ");
-                    const titleStr = file.title || `Stock Asset #${file.id}`;
-                    const dlCount = file.nb_downloads || 0;
-                    const catName = (file.category && file.category.name) || "Graphic Resources";
-
-                    const card = document.createElement("div");
-                    card.className = "bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between";
-                    card.innerHTML = `
-                        <div>
-                            <div class="h-52 bg-slate-900/5 p-3 flex items-center justify-center relative group">
-                                <a href="https://stock.adobe.com/${file.id}" target="_blank" class="w-full h-full flex items-center justify-center">
-                                    <img src="${thumb}" alt="${titleStr}" class="max-h-full max-w-full object-contain">
-                                </a>
-                            </div>
-
-                            <div class="p-4">
-                                <div class="flex items-start justify-between gap-2 mb-3">
-                                    <p class="text-xs text-slate-800 font-semibold line-clamp-2 leading-relaxed" title="${titleStr}">${titleStr}</p>
-                                    <button onclick="copySingle('${titleStr.replace(/'/g, "\\'")}', this)" class="text-slate-400 hover:text-slate-600 text-xs" title="Copy Title">
-                                        <i class="fa-regular fa-copy"></i>
-                                    </button>
-                                </div>
-
-                                <div class="grid grid-cols-2 gap-2 mb-3">
-                                    <div class="bg-[#2563eb] text-white p-2 rounded-lg text-left">
-                                        <div class="text-base font-black leading-none mb-0.5">${dlCount}</div>
-                                        <div class="text-[9px] uppercase font-bold tracking-wider opacity-90">Downloads</div>
-                                    </div>
-                                    <div class="bg-[#10b981] text-white p-2 rounded-lg text-left">
-                                        <div class="text-xs font-bold leading-tight mb-0.5">${timeInfo.ago}</div>
-                                        <div class="text-[9px] uppercase font-bold tracking-wider opacity-90">Upload</div>
-                                    </div>
-                                </div>
-
-                                <div class="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
-                                    <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200/60 font-medium">
-                                        <i class="fa-solid fa-tag text-[9px] mr-1"></i> ${catName}
-                                    </span>
-                                    <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
-                                        <i class="fa-regular fa-calendar text-[9px] mr-1"></i> ${timeInfo.date}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[11px]">
-                            <span class="text-slate-400">Keywords</span>
-                            <button onclick="copySingle('${tagsStr.replace(/'/g, "\\'")}', this)" class="text-slate-600 hover:text-red-600 font-medium flex items-center gap-1">
-                                <i class="fa-regular fa-copy"></i> Copy all
-                            </button>
-                        </div>
-                    `;
-                    grid.appendChild(card);
-                });
-            } catch(e) {
-                loader.classList.add("hidden");
-                alert("Network error. Please click Track again.");
             }
+
+            loader.classList.add("hidden");
+
+            if (currentSort === "downloads") {
+                rawItems.sort((a, b) => (b.nb_downloads || 0) - (a.nb_downloads || 0));
+            }
+
+            itemsCount.innerText = `${rawItems.length} items`;
+
+            if(rawItems.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found or network is retrying. Click Track again.</div>`;
+                return;
+            }
+
+            rawItems.forEach(file => {
+                const thumb = file.thumbnail_500_url || file.thumbnail_url;
+                if(!thumb) return;
+
+                const timeInfo = parseTimeAgo(file.creation_date);
+                const tagArray = (file.keywords || []).map(k => (typeof k === 'object' ? k.name : k).toLowerCase());
+                const tagsStr = tagArray.join(", ");
+                const titleStr = file.title || `Stock Asset #${file.id}`;
+                const dlCount = file.nb_downloads || 0;
+                const catName = (file.category && file.category.name) || "Graphic Resources";
+
+                const card = document.createElement("div");
+                card.className = "bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between";
+                card.innerHTML = `
+                    <div>
+                        <div class="h-52 bg-slate-900/5 p-3 flex items-center justify-center relative group">
+                            <a href="https://stock.adobe.com/${file.id}" target="_blank" class="w-full h-full flex items-center justify-center">
+                                <img src="${thumb}" alt="${titleStr}" class="max-h-full max-w-full object-contain">
+                            </a>
+                        </div>
+
+                        <div class="p-4">
+                            <div class="flex items-start justify-between gap-2 mb-3">
+                                <p class="text-xs text-slate-800 font-semibold line-clamp-2 leading-relaxed" title="${titleStr}">${titleStr}</p>
+                                <button onclick="copySingle('${titleStr.replace(/'/g, "\\'")}', this)" class="text-slate-400 hover:text-slate-600 text-xs" title="Copy Title">
+                                    <i class="fa-regular fa-copy"></i>
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 mb-3">
+                                <div class="bg-[#2563eb] text-white p-2 rounded-lg text-left">
+                                    <div class="text-base font-black leading-none mb-0.5">${dlCount}</div>
+                                    <div class="text-[9px] uppercase font-bold tracking-wider opacity-90">Downloads</div>
+                                </div>
+                                <div class="bg-[#10b981] text-white p-2 rounded-lg text-left">
+                                    <div class="text-xs font-bold leading-tight mb-0.5">${timeInfo.ago}</div>
+                                    <div class="text-[9px] uppercase font-bold tracking-wider opacity-90">Upload</div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
+                                <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200/60 font-medium">
+                                    <i class="fa-solid fa-tag text-[9px] mr-1"></i> ${catName}
+                                </span>
+                                <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
+                                    <i class="fa-regular fa-calendar text-[9px] mr-1"></i> ${timeInfo.date}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[11px]">
+                        <span class="text-slate-400">Keywords</span>
+                        <button onclick="copySingle('${tagsStr.replace(/'/g, "\\'")}', this)" class="text-slate-600 hover:text-red-600 font-medium flex items-center gap-1">
+                            <i class="fa-regular fa-copy"></i> Copy all
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
         }
 
         function copySingle(text, btn) {
