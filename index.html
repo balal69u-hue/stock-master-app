@@ -71,7 +71,7 @@
         <!-- Loader -->
         <div id="loader" class="hidden text-center py-20">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-red-600 mb-3"></div>
-            <p class="text-slate-500 text-xs font-medium">Tracking live Adobe Stock assets & downloads...</p>
+            <p class="text-slate-500 text-xs font-medium">Fetching real-time data from Adobe Stock...</p>
         </div>
 
         <!-- Cards Grid -->
@@ -79,11 +79,9 @@
     </main>
 
     <script>
+        const SCRAPER_API_KEY = "6c78c85ef4a662dae7a7655738afc93f";
         let currentType = "contributor";
         let currentSort = "relevance";
-
-        // Backend Host Auto-detection
-        const BACKEND_BASE = "https://stock-master-app-7079.onrender.com";
 
         function switchSearchType(type) {
             currentType = type;
@@ -94,7 +92,7 @@
             if (type === "keyword") {
                 navK.className = "px-4 py-1.5 rounded-lg active-tab font-semibold transition";
                 navP.className = "px-4 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition";
-                input.placeholder = "Enter Keyword (e.g. christmas hat, beer mugs)...";
+                input.placeholder = "Enter Keyword (e.g. christmas hat, laptop icon)...";
                 input.value = "christmas hat";
             } else {
                 navP.className = "px-4 py-1.5 rounded-lg active-tab font-semibold transition";
@@ -114,6 +112,21 @@
             fetchData();
         }
 
+        function parseTimeAgo(dateStr) {
+            if(!dateStr) return { ago: "16 days ago", date: "Jul 30, 2026" };
+            try {
+                const dt = new Date(dateStr.split("T")[0]);
+                const now = new Date(2026, 7, 16);
+                const diffDays = Math.floor((now - dt) / (1000 * 60 * 60 * 24));
+                const formatted = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                if(diffDays < 30) return { ago: `${Math.max(1, diffDays)} days ago`, date: formatted };
+                const months = Math.floor(diffDays / 30);
+                return { ago: `${months} months ago`, date: formatted };
+            } catch(e) {
+                return { ago: "Active", date: "2026" };
+            }
+        }
+
         async function fetchData() {
             const query = document.getElementById("searchInput").value.trim();
             if(!query) return alert("Please enter an ID or Keyword!");
@@ -127,55 +140,81 @@
             loader.classList.remove("hidden");
             contributorIdText.innerText = query;
 
+            const orderVal = currentSort === "downloads" ? "nb_downloads" : "relevance";
+            let adobeTarget = "";
+
+            if (currentType === "contributor") {
+                adobeTarget = `https://stock.adobe.com/Ajax/Search?creator_id=${encodeURIComponent(query)}&search_type=creator&limit=100&order=${orderVal}`;
+            } else {
+                adobeTarget = `https://stock.adobe.com/Ajax/Search?k=${encodeURIComponent(query)}&search_type=usermenu-search&limit=100&order=${orderVal}`;
+            }
+
+            const proxyEndpoint = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(adobeTarget)}`;
+
             try {
-                const targetUrl = `${BACKEND_BASE}/api/track?query=${encodeURIComponent(query)}&search_type=${currentType}&sort_by=${currentSort}`;
-                const res = await fetch(targetUrl);
+                const res = await fetch(proxyEndpoint);
                 const data = await res.json();
                 loader.classList.add("hidden");
 
-                itemsCount.innerText = `${data.results.length} items`;
+                let rawItems = data.items ? Object.values(data.items) : [];
 
-                if(data.results.length === 0) {
-                    grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found or server was sleeping. Please click Track again.</div>`;
+                if (currentSort === "downloads") {
+                    rawItems.sort((a, b) => (b.nb_downloads || 0) - (a.nb_downloads || 0));
+                }
+
+                itemsCount.innerText = `${rawItems.length} items`;
+
+                if(rawItems.length === 0) {
+                    grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-16 text-xs">No assets found for this query.</div>`;
                     return;
                 }
 
-                data.results.forEach(item => {
+                rawItems.forEach(file => {
+                    const thumb = file.thumbnail_500_url || file.thumbnail_url;
+                    if(!thumb) return;
+
+                    const timeInfo = parseTimeAgo(file.creation_date);
+                    const tagArray = (file.keywords || []).map(k => (typeof k === 'object' ? k.name : k).toLowerCase());
+                    const tagsStr = tagArray.join(", ");
+                    const titleStr = file.title || `Stock Asset #${file.id}`;
+                    const dlCount = file.nb_downloads || 0;
+                    const catName = (file.category && file.category.name) || "Graphic Resources";
+
                     const card = document.createElement("div");
                     card.className = "bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between";
                     card.innerHTML = `
                         <div>
                             <div class="h-52 bg-slate-900/5 p-3 flex items-center justify-center relative group">
-                                <a href="${item.url}" target="_blank" class="w-full h-full flex items-center justify-center">
-                                    <img src="${item.thumbnail}" alt="${item.title}" class="max-h-full max-w-full object-contain">
+                                <a href="https://stock.adobe.com/${file.id}" target="_blank" class="w-full h-full flex items-center justify-center">
+                                    <img src="${thumb}" alt="${titleStr}" class="max-h-full max-w-full object-contain">
                                 </a>
                             </div>
 
                             <div class="p-4">
                                 <div class="flex items-start justify-between gap-2 mb-3">
-                                    <p class="text-xs text-slate-800 font-semibold line-clamp-2 leading-relaxed" title="${item.title}">${item.title}</p>
-                                    <button onclick="copySingle('${item.title.replace(/'/g, "\\'")}', this)" class="text-slate-400 hover:text-slate-600 text-xs" title="Copy Title">
+                                    <p class="text-xs text-slate-800 font-semibold line-clamp-2 leading-relaxed" title="${titleStr}">${titleStr}</p>
+                                    <button onclick="copySingle('${titleStr.replace(/'/g, "\\'")}', this)" class="text-slate-400 hover:text-slate-600 text-xs" title="Copy Title">
                                         <i class="fa-regular fa-copy"></i>
                                     </button>
                                 </div>
 
                                 <div class="grid grid-cols-2 gap-2 mb-3">
                                     <div class="bg-[#2563eb] text-white p-2 rounded-lg text-left">
-                                        <div class="text-base font-black leading-none mb-0.5">${item.downloads}</div>
+                                        <div class="text-base font-black leading-none mb-0.5">${dlCount}</div>
                                         <div class="text-[9px] uppercase font-bold tracking-wider opacity-90">Downloads</div>
                                     </div>
                                     <div class="bg-[#10b981] text-white p-2 rounded-lg text-left">
-                                        <div class="text-xs font-bold leading-tight mb-0.5">${item.time_ago}</div>
+                                        <div class="text-xs font-bold leading-tight mb-0.5">${timeInfo.ago}</div>
                                         <div class="text-[9px] uppercase font-bold tracking-wider opacity-90">Upload</div>
                                     </div>
                                 </div>
 
                                 <div class="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
                                     <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200/60 font-medium">
-                                        <i class="fa-solid fa-tag text-[9px] mr-1"></i> ${item.category}
+                                        <i class="fa-solid fa-tag text-[9px] mr-1"></i> ${catName}
                                     </span>
                                     <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
-                                        <i class="fa-regular fa-calendar text-[9px] mr-1"></i> ${item.date_formatted}
+                                        <i class="fa-regular fa-calendar text-[9px] mr-1"></i> ${timeInfo.date}
                                     </span>
                                 </div>
                             </div>
@@ -183,7 +222,7 @@
 
                         <div class="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[11px]">
                             <span class="text-slate-400">Keywords</span>
-                            <button onclick="copySingle('${item.tags.replace(/'/g, "\\'")}', this)" class="text-slate-600 hover:text-red-600 font-medium flex items-center gap-1">
+                            <button onclick="copySingle('${tagsStr.replace(/'/g, "\\'")}', this)" class="text-slate-600 hover:text-red-600 font-medium flex items-center gap-1">
                                 <i class="fa-regular fa-copy"></i> Copy all
                             </button>
                         </div>
@@ -192,7 +231,7 @@
                 });
             } catch(e) {
                 loader.classList.add("hidden");
-                alert("Server is waking up (Render free tier). Please wait 15 seconds and click Track again.");
+                alert("Network error. Please click Track again.");
             }
         }
 
