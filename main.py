@@ -1,12 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
-import os
 
-app = FastAPI(title="Stock Analytics API")
+app = FastAPI(title="Stock Analytics Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,18 +15,69 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
+HTML_CONTENT = """
+
+
+    
+    
+    StockTracker Pro - TAS Master Alternative
+    
+
+
+
+    
+    
+        
+            
+                ST
+                StockTracker Pro
+            
+            ● System Active (Free)
+        
+    
+
+    
+    
+        
+            Stock Keyword & Asset Research
+            Search any niche to discover real trending concepts, commercial titles, and high-ranking tags.
+            
+            
+                
+                
+                    Search Assets
+                
+            
+        
+
+        
+        
+            
+            Fetching live marketplace data...
+        
+
+        
+        
+
+        
+        
+    
+
+    
+
+
+"""
+
+@app.get("/", response_class=HTMLResponse)
 def home():
-    if os.path.exists("index.html"):
-        return FileResponse("index.html")
-    return {"status": "running", "message": "Stock Tracker API is live!"}
+    return HTMLResponse(content=HTML_CONTENT)
 
 @app.get("/api/search")
 def search_stock(keyword: str):
     items = []
     encoded_kw = urllib.parse.quote(keyword)
     
-    # ১. Adobe Stock স্ক্র্যাপিং চেষ্টা
+    # 1. Adobe Stock Scraper
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -41,7 +91,7 @@ def search_stock(keyword: str):
             for cell in cells[:16]:
                 img_tag = cell.find("img")
                 link_tag = cell.find("a", href=True)
-                title = (img_tag.get("alt") if img_tag else "") or (link_tag.get("title") if link_tag else "") or f"{keyword.title()} Asset"
+                title = (img_tag.get("alt") if img_tag else "") or (link_tag.get("title") if link_tag else "") or f"{keyword.title()} Stock Asset"
                 thumb = img_tag.get("src", "") if img_tag else ""
                 item_url = "https://stock.adobe.com" + link_tag["href"] if link_tag else url
                 if thumb and "http" in thumb:
@@ -49,7 +99,7 @@ def search_stock(keyword: str):
     except Exception:
         pass
 
-    # ২. ব্যাকআপ ইঞ্জিন (ক্লাউড ব্লক থাকলে সরাসরি রিয়েল হাই-কোয়ালিটি স্টক ডেটা ফেচ করবে)
+    # 2. Smart High-Quality Fallback
     if len(items) == 0:
         try:
             backup_url = f"https://lexica.art/api/v1/search?q={encoded_kw}"
@@ -57,7 +107,7 @@ def search_stock(keyword: str):
             if "images" in b_res:
                 for img in b_res["images"][:16]:
                     items.append({
-                        "title": img.get("prompt", f"{keyword.title()} Commercial Concept")[:80],
+                        "title": img.get("prompt", f"{keyword.title()} Commercial Concept")[:90],
                         "thumbnail": img.get("srcSmall", img.get("src")),
                         "url": f"https://stock.adobe.com/search?k={encoded_kw}"
                     })
