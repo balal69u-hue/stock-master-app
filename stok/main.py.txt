@@ -1,0 +1,53 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import requests
+from bs4 import BeautifulSoup
+import urllib.parse
+
+app = FastAPI(title="Stock Analytics API")
+
+# ফ্রন্টএন্ড কানেক্ট করার জন্য CORS অনুমতি
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def home():
+    return {"status": "running", "message": "Stock Tracker Free API is live!"}
+
+@app.get("/api/search")
+def search_stock(keyword: str):
+    try:
+        encoded_kw = urllib.parse.quote(keyword)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        url = f"https://stock.adobe.com/search?k={encoded_kw}"
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        soup = BeautifulSoup(response.text, "html.parser")
+        items = []
+        
+        # কার্ডগুলো খোঁজা
+        cells = soup.find_all("div", {"data-t": "search-result-cell"})
+        for cell in cells[:12]:
+            img_tag = cell.find("img")
+            link_tag = cell.find("a", href=True)
+            
+            title = img_tag.get("alt", "Stock Item") if img_tag else "No Title"
+            thumb = img_tag.get("src", "") if img_tag else ""
+            item_url = "https://stock.adobe.com" + link_tag["href"] if link_tag else url
+            
+            items.append({
+                "title": title,
+                "thumbnail": thumb,
+                "url": item_url
+            })
+            
+        return {"keyword": keyword, "count": len(items), "results": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
