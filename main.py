@@ -7,7 +7,7 @@ import os
 import re
 from datetime import datetime
 
-app = FastAPI(title="TAS Master Clone Engine")
+app = FastAPI(title="Adobe Stock Contributor Real-Time Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,115 +22,124 @@ def home():
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return Response(content=f.read(), media_type="text/html")
-    return Response(content="<h2>TAS Master Engine Running...</h2>", media_type="text/html")
+    return Response(content="<h2>TAS Master Tracker Running...</h2>", media_type="text/html")
 
 def calculate_time_ago(date_str):
     try:
         dt = datetime.strptime(date_str.split("T")[0], "%Y-%m-%d")
-        now = datetime(2026, 8, 16)
+        now = datetime.utcnow()
         diff_days = (now - dt).days
         if diff_days < 30:
             return f"{max(1, diff_days)} days ago", dt.strftime("%b %d, %Y")
-        months = diff_days // 30
+        months = max(1, diff_days // 30)
         return f"{months} months ago", dt.strftime("%b %d, %Y")
     except Exception:
         return "Recent", "2026"
 
 @app.get("/api/track")
-def track_adobe_stock(query: str, search_type: str = "contributor", sort_by: str = "relevance", content_type: str = "all"):
+def track_adobe_stock(query: str, search_type: str = "contributor", sort_by: str = "relevance"):
     items = []
     clean_q = query.strip()
     encoded_q = urllib.parse.quote(clean_q)
 
-    # Sort parameter mapping
-    order_param = "relevance"
-    if sort_by == "downloads":
-        order_param = "nb_downloads"
-    elif sort_by == "newest":
-        order_param = "creation_date"
-
-    # Direct Adobe Stock Gateway Request
+    # 1. Real Contributor URL with Download Order
     if search_type == "contributor":
-        api_url = f"https://stock.adobe.com/Ajax/Search?creator_id={encoded_q}&search_type=creator&limit=100&order={order_param}"
+        order = "nb_downloads" if sort_by == "downloads" else "relevance"
+        target_url = f"https://stock.adobe.com/contributor/{encoded_q}?order={order}&limit=100"
     else:
-        api_url = f"https://stock.adobe.com/Ajax/Search?k={encoded_q}&search_type=usermenu-search&limit=100&order={order_param}"
+        order = "nb_downloads" if sort_by == "downloads" else "relevance"
+        target_url = f"https://stock.adobe.com/search?k={encoded_q}&order={order}&limit=100"
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Referer": f"https://stock.adobe.com/contributor/{encoded_q}"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
     }
 
     try:
-        res = requests.get(api_url, headers=headers, timeout=12)
+        session = requests.Session()
+        res = session.get(target_url, headers=headers, timeout=12)
+        
         if res.status_code == 200:
-            data = res.json()
-            raw_items = data.get("items", {})
-            items_list = list(raw_items.values()) if isinstance(raw_items, dict) else (raw_items if isinstance(raw_items, list) else [])
+            # Extract Adobe's Internal State JSON
+            matches = re.findall(r'window\.__INITIAL_STATE__\s*=\s*({.*?});</script>', res.text)
+            if matches:
+                init_data = json.loads(matches[0])
+                search_data = init_data.get("search", {})
+                results_data = search_data.get("results", {})
+                raw_items = results_data.get("items", [])
 
-            for file in items_list:
-                asset_id = file.get("id")
-                title = file.get("title") or f"Stock Asset #{asset_id}"
-                thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
-                downloads = file.get("nb_downloads", 0)
-                if downloads is None or downloads == "":
-                    downloads = 0
-                
-                creation_date = file.get("creation_date") or "2026-04-01"
-                time_ago, date_formatted = calculate_time_ago(creation_date)
-                
-                category = file.get("category", {}).get("name") if isinstance(file.get("category"), dict) else "Graphic Resources"
-                
-                # Tags parsing
-                raw_kw = file.get("keywords", [])
-                tags_list = []
-                for k in raw_kw:
-                    t = k.get("name") if isinstance(k, dict) else str(k)
-                    if t:
-                        tags_list.append(t.strip().lower())
-                
-                tags_str = ", ".join(tags_list) if tags_list else f"{clean_q.lower()}, vector, stock, commercial"
+                for file in raw_items:
+                    asset_id = file.get("id")
+                    title = file.get("title") or f"Adobe Stock #{asset_id}"
+                    thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
+                    downloads = file.get("nb_downloads", 0)
+                    
+                    creation_date = file.get("creation_date") or ""
+                    time_ago, date_formatted = calculate_time_ago(creation_date)
+                    
+                    category = "Graphic Resources"
+                    if isinstance(file.get("category"), dict):
+                        category = file.get("category").get("name", "Graphic Resources")
+                    
+                    # Exact lowercase comma-separated keywords
+                    raw_kw = file.get("keywords", [])
+                    tags_list = []
+                    for k in raw_kw:
+                        t = k.get("name") if isinstance(k, dict) else str(k)
+                        if t:
+                            tags_list.append(t.strip().lower())
+                    
+                    tags_str = ", ".join(tags_list)
 
-                if thumb:
-                    items.append({
-                        "id": str(asset_id),
-                        "title": title,
-                        "thumbnail": thumb,
-                        "downloads": int(downloads),
-                        "time_ago": time_ago,
-                        "date_formatted": date_formatted,
-                        "category": category or "Vectors",
-                        "tags": tags_str,
-                        "url": f"https://stock.adobe.com/{asset_id}"
-                    })
+                    if thumb:
+                        items.append({
+                            "id": str(asset_id),
+                            "title": title,
+                            "thumbnail": thumb,
+                            "downloads": int(downloads) if downloads else 0,
+                            "time_ago": time_ago,
+                            "date_formatted": date_formatted,
+                            "category": category,
+                            "tags": tags_str,
+                            "url": f"https://stock.adobe.com/{asset_id}"
+                        })
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        print(f"Error parsing state: {e}")
 
-    # Fallback to direct Adobe HTML structure if Ajax returns empty
+    # Fallback to direct Ajax Gateway
     if len(items) == 0:
         try:
-            html_url = f"https://stock.adobe.com/contributor/{encoded_q}" if search_type == "contributor" else f"https://stock.adobe.com/search?k={encoded_kw}"
-            h_res = requests.get(html_url, headers=headers, timeout=12)
-            if h_res.status_code == 200:
-                matches = re.findall(r'window\.__INITIAL_STATE__\s*=\s*({.*?});', h_res.text)
-                if matches:
-                    init_data = json.loads(matches[0])
-                    files = init_data.get("search", {}).get("results", {}).get("items", [])
-                    for f in files:
+            ajax_url = f"https://stock.adobe.com/Ajax/Search?creator_id={encoded_q}&search_type=creator&limit=60&order=nb_downloads"
+            a_res = requests.get(ajax_url, headers={"User-Agent": headers["User-Agent"], "X-Requested-With": "XMLHttpRequest"}, timeout=10)
+            if a_res.status_code == 200:
+                a_data = a_res.json()
+                raw_items = a_data.get("items", {})
+                items_list = list(raw_items.values()) if isinstance(raw_items, dict) else raw_items
+                for file in items_list:
+                    thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
+                    if thumb:
+                        raw_kw = file.get("keywords", [])
+                        tags_list = [k.get("name", "").lower() if isinstance(k, dict) else str(k).lower() for k in raw_kw if k]
                         items.append({
-                            "id": str(f.get("id")),
-                            "title": f.get("title", f"Adobe Stock #{f.get('id')}"),
-                            "thumbnail": f.get("thumbnail_url", ""),
-                            "downloads": int(f.get("nb_downloads", 0)),
-                            "time_ago": "Recent",
-                            "date_formatted": "Aug 2026",
-                            "category": "Illustration",
-                            "tags": ", ".join([k.lower() for k in f.get("keywords", [])]),
-                            "url": f"https://stock.adobe.com/{f.get('id')}"
+                            "id": str(file.get("id")),
+                            "title": file.get("title", f"Stock #{file.get('id')}"),
+                            "thumbnail": thumb,
+                            "downloads": int(file.get("nb_downloads") or 0),
+                            "time_ago": "Active",
+                            "date_formatted": "2026",
+                            "category": "Illustrations",
+                            "tags": ", ".join(tags_list),
+                            "url": f"https://stock.adobe.com/{file.get('id')}"
                         })
         except Exception:
             pass
+
+    # Sort descending by downloads if requested
+    if sort_by == "downloads":
+        items.sort(key=lambda x: x["downloads"], reverse=True)
 
     return {
         "query": clean_q,
