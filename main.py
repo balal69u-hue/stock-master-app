@@ -16,23 +16,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# হোমপেজে সরাসরি ওয়েবসাইট UI (index.html) দেখাবে
 @app.get("/")
 def home():
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return {"status": "running", "message": "Stock Tracker API is live!"}
 
-# সার্চ এপিআই ইঞ্জিন
 @app.get("/api/search")
 def search_stock(keyword: str):
     try:
         encoded_kw = urllib.parse.quote(keyword)
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
         }
         url = f"https://stock.adobe.com/search?k={encoded_kw}"
-        response = requests.get(url, headers=headers, timeout=12)
+        response = requests.get(url, headers=headers, timeout=15)
         
         soup = BeautifulSoup(response.text, "html.parser")
         items = []
@@ -42,16 +42,24 @@ def search_stock(keyword: str):
             img_tag = cell.find("img")
             link_tag = cell.find("a", href=True)
             
-            title = img_tag.get("alt", "Stock Item") if img_tag else "No Title"
+            title = ""
+            if img_tag:
+                title = img_tag.get("alt") or img_tag.get("title") or ""
+            if not title and link_tag:
+                title = link_tag.get("title") or ""
+            if not title:
+                title = f"{keyword.capitalize()} Stock Asset"
+                
             thumb = img_tag.get("src", "") if img_tag else ""
             item_url = "https://stock.adobe.com" + link_tag["href"] if link_tag else url
             
-            items.append({
-                "title": title,
-                "thumbnail": thumb,
-                "url": item_url
-            })
-            
+            if thumb:
+                items.append({
+                    "title": title,
+                    "thumbnail": thumb,
+                    "url": item_url
+                })
+                
         return {"keyword": keyword, "count": len(items), "results": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
