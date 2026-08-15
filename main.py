@@ -4,8 +4,9 @@ import requests
 import json
 import urllib.parse
 import os
+import re
 
-app = FastAPI(title="Adobe Stock Contributor & Keyword Tracker")
+app = FastAPI(title="Adobe Stock Direct Analytics Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,71 +26,80 @@ def home():
 @app.get("/api/track")
 def track_adobe_stock(query: str, search_type: str = "keyword"):
     items = []
-    encoded_q = urllib.parse.quote(query)
-    
-    # Base URL for Adobe Stock Ajax Engine
+    clean_q = query.strip()
+    encoded_q = urllib.parse.quote(clean_q)
+
+    # 1. Build Adobe Target URL by order of Downloads (Top Sales first)
     if search_type == "contributor":
-        # কন্ট্রিবিউটর ট্র্যাকিং এন্ডপয়েন্ট
-        target_url = f"https://stock.adobe.com/Ajax/Search?creator_id={encoded_q}&search_type=creator&limit=40&order=nb_downloads"
+        adobe_url = f"https://stock.adobe.com/Ajax/Search?creator_id={encoded_q}&search_type=creator&limit=48&order=nb_downloads"
     else:
-        # কীওয়ার্ড ও ডাউনলোড ট্র্যাকিং এন্ডপয়েন্ট
-        target_url = f"https://stock.adobe.com/Ajax/Search?k={encoded_q}&search_type=usermenu-search&limit=40&order=nb_downloads"
+        adobe_url = f"https://stock.adobe.com/Ajax/Search?k={encoded_q}&search_type=usermenu-search&limit=48&order=nb_downloads"
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Referer": "https://stock.adobe.com/"
-    }
+    # Gateway rotation to prevent IP restrictions
+    gateways = [
+        f"https://api.allorigins.win/raw?url={urllib.parse.quote(adobe_url)}",
+        adobe_url
+    ]
 
-    try:
-        res = requests.get(target_url, headers=headers, timeout=12)
-        if res.status_code == 200:
-            data = res.json()
-            raw_items = data.get("items", {})
-            
-            items_list = list(raw_items.values()) if isinstance(raw_items, dict) else raw_items
-            
-            for file in items_list:
-                asset_id = file.get("id")
-                title = file.get("title") or f"Adobe Stock Asset #{asset_id}"
-                thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
-                creator = file.get("creator_name", "Unknown Contributor")
-                creator_id = file.get("creator_id", "")
-                
-                # আসল ডাউনলোড সংখ্যা ও র‍্যাংক ডাটা এক্সট্রাকশন
-                downloads = file.get("nb_downloads")
-                if downloads is None or downloads == "":
-                    # যদি ব্যাকএন্ড সরাসরি ভ্যালু হাইড করে, মেটা-মেট্রিক থেকে ট্র্যাক করা
-                    downloads = file.get("views_count") or file.get("relevance_score") or 0
-                
-                # Adobe Stock Keywords (ছোট হাতের অক্ষরে কমা দিয়ে আলাদা)
-                raw_kw = file.get("keywords", [])
-                tags_list = []
-                for k in raw_kw:
-                    tag_name = k.get("name") if isinstance(k, dict) else str(k)
-                    if tag_name:
-                        tags_list.append(tag_name.strip().lower())
-                
-                tags_str = ", ".join(tags_list) if tags_list else f"{query.lower()}, vector, stock graphic, commercial asset"
+    for g_url in gateways:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "X-Requested-With": "XMLHttpRequest",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Referer": "https://stock.adobe.com/"
+            }
+            res = requests.get(g_url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                raw_text = res.text
+                # Parse JSON response
+                try:
+                    data = json.loads(raw_text)
+                except Exception:
+                    data = {}
 
-                if thumb:
-                    items.append({
-                        "id": str(asset_id),
-                        "title": title,
-                        "thumbnail": thumb,
-                        "creator": creator,
-                        "creator_id": str(creator_id),
-                        "downloads": str(downloads) if downloads else "Top Asset",
-                        "tags": tags_str,
-                        "asset_url": f"https://stock.adobe.com/{asset_id}"
-                    })
-    except Exception as e:
-        print(f"Tracking error: {e}")
+                raw_items = data.get("items", {})
+                items_list = list(raw_items.values()) if isinstance(raw_items, dict) else (raw_items if isinstance(raw_items, list) else [])
+
+                for file in items_list:
+                    asset_id = file.get("id")
+                    title = file.get("title") or f"Stock Asset #{asset_id}"
+                    thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
+                    creator = file.get("creator_name", "Adobe Contributor")
+                    
+                    # Exact downloads or top rank metrics
+                    downloads = file.get("nb_downloads")
+                    dl_display = f"{int(downloads):,} Downloads" if (downloads is not None and str(downloads).isdigit()) else "Top Rank Asset"
+                    
+                    # Extract tags in lowercase with comma
+                    raw_kw = file.get("keywords", [])
+                    tags_list = []
+                    for k in raw_kw:
+                        t = k.get("name") if isinstance(k, dict) else str(k)
+                        if t:
+                            tags_list.append(t.strip().lower())
+
+                    tags_str = ", ".join(tags_list) if tags_list else f"{clean_q.lower()}, vector, graphic, commercial"
+
+                    if thumb:
+                        items.append({
+                            "id": str(asset_id),
+                            "title": title,
+                            "thumbnail": thumb,
+                            "creator": creator,
+                            "downloads": dl_display,
+                            "tags": tags_str,
+                            "asset_url": f"https://stock.adobe.com/{asset_id}"
+                        })
+
+                if len(items) > 0:
+                    break
+        except Exception:
+            continue
 
     return {
-        "query": query,
+        "query": clean_q,
         "search_type": search_type,
-        "total_tracked": len(items),
+        "count": len(items),
         "results": items
     }
