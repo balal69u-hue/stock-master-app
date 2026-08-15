@@ -1,12 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 import requests
 import urllib.parse
 import os
-import random
 
-app = FastAPI(title="Stock Analytics Engine")
+app = FastAPI(title="Adobe Stock Real-Time Analytics Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,71 +14,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=Response)
 def home():
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read(), status_code=200)
-    return HTMLResponse("System Active. index.html loading...", status_code=200)
+            return Response(content=f.read(), media_type="text/html")
+    return Response(content="System Active. Loading...", media_type="text/html")
 
 @app.get("/api/search")
-def search_stock(keyword: str):
+def search_adobe_stock(keyword: str):
     items = []
     encoded_kw = urllib.parse.quote(keyword)
     
-    # 1. Reliable Wikimedia Commons Engine (Never blocked)
+    # Direct Adobe Stock Engine Endpoint
+    adobe_api_url = (
+        f"https://stock.adobe.com/Rest/Libraries/1/Search/Files?"
+        f"locale=en_US&search_parameters[words]={encoded_kw}&"
+        f"search_parameters[limit]=24&"
+        f"search_parameters[order]=relevance&"
+        f"result_columns[]=id&"
+        f"result_columns[]=title&"
+        f"result_columns[]=thumbnail_url&"
+        f"result_columns[]=thumbnail_500_url&"
+        f"result_columns[]=keywords&"
+        f"result_columns[]=creator_name&"
+        f"result_columns[]=nb_downloads"
+    )
+    
+    headers = {
+        "x-product": "StockSearch/1.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    }
+    
     try:
-        url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={encoded_kw}&gsrlimit=16&prop=imageinfo&iiprop=url|extmetadata&format=json"
-        headers = {"User-Agent": "StockTrackerApp/2.0 (contact@stocktracker.app)"}
-        res = requests.get(url, headers=headers, timeout=8).json()
-        
-        pages = res.get("query", {}).get("pages", {})
-        for page_id, val in pages.items():
-            img_info = val.get("imageinfo", [{}])[0]
-            thumb = img_info.get("url", "")
+        res = requests.get(adobe_api_url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            files = data.get("files", [])
             
-            # Filter only image files
-            if thumb and any(thumb.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".svg"]):
-                raw_title = val.get("title", "").replace("File:", "").split(".")[0]
-                clean_title = f"{raw_title.replace('_', ' ')} - {keyword.title()}"[:75]
+            for file in files:
+                title = file.get("title") or f"{keyword.title()} Asset"
+                thumb = file.get("thumbnail_500_url") or file.get("thumbnail_url") or ""
+                asset_id = file.get("id")
+                creator = file.get("creator_name", "Contributor")
+                downloads = file.get("nb_downloads", 0)
                 
-                # Dynamic realistic stock metadata (TAS Master style)
-                downloads = random.randint(350, 4850)
-                items.append({
-                    "title": clean_title,
-                    "thumbnail": thumb,
-                    "downloads": f"{downloads:,}",
-                    "tags": f"{keyword.lower()}, vector, stock graphic, commercial asset, creative design",
-                    "url": img_info.get("descriptionurl", "#")
-                })
-    except Exception:
-        pass
-
-    # 2. Smart Fallback Engine
-    if len(items) == 0:
-        base_keywords = [
-            f"Modern {keyword.title()} Flat Vector Design",
-            f"Minimalist {keyword.title()} Icon Set for Web & App",
-            f"Professional {keyword.title()} Commercial Concept",
-            f"Creative 3D {keyword.title()} Illustration Graphic",
-            f"Clean {keyword.title()} UI Element for Designers",
-            f"Abstract {keyword.title()} Digital Artwork Asset",
-            f"Premium {keyword.title()} Stock Template Design",
-            f"High Quality {keyword.title()} Symbol Collection"
-        ]
-        
-        for i, t in enumerate(base_keywords):
-            downloads = random.randint(420, 3900)
-            items.append({
-                "title": t,
-                "thumbnail": f"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60",
-                "downloads": f"{downloads:,}",
-                "tags": f"{keyword.lower()}, premium icon, creative vector, digital stock",
-                "url": f"https://stock.adobe.com/search?k={encoded_kw}"
-            })
+                # Tags list extraction
+                tags_list = []
+                for kw_item in file.get("keywords", []):
+                    if isinstance(kw_item, dict):
+                        tags_list.append(kw_item.get("name", "").lower())
+                    elif isinstance(kw_item, str):
+                        tags_list.append(kw_item.lower())
+                
+                tags_str = ", ".join(tags_list[:25]) if tags_list else f"{keyword.lower()}, stock, vector, commercial"
+                
+                if thumb:
+                    items.append({
+                        "id": str(asset_id),
+                        "title": title,
+                        "thumbnail": thumb,
+                        "creator": creator,
+                        "downloads": f"{downloads:,}" if downloads else "High Demand",
+                        "tags": tags_str,
+                        "url": f"https://stock.adobe.com/{asset_id}"
+                    })
+    except Exception as e:
+        print(f"Error fetching Adobe Stock: {e}")
 
     return {
         "keyword": keyword,
+        "source": "Adobe Stock Real-Time",
         "count": len(items),
         "results": items
     }
