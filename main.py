@@ -1,7 +1,9 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse
 import requests
 import urllib.parse
+import os
 
 app = FastAPI(title="Stock Analytics Engine")
 
@@ -13,62 +15,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-HTML_PAGE = """
-
-
-    
-    
-    StockTracker Pro - TAS Master Alternative
-    
-
-
-    
-        
-            
-                ST
-                StockTracker Pro
-            
-            ● Free Engine Active
-        
-    
-
-    
-        
-            Stock Keyword & Asset Research
-            Discover top-selling concepts, high-performing titles, and metadata instantly.
-            
-            
-                
-                
-                    Search Assets
-                
-            
-        
-
-        
-            
-            Fetching stock assets & metadata...
-        
-
-        
-        
-    
-
-    
-
-
-"""
-
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def home():
-    return Response(content=HTML_PAGE, media_type="text/html")
+    if os.path.exists("index.html"):
+        with open("index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), status_code=200)
+    return HTMLResponse("<h2>index.html file not found</h2>", status_code=404)
 
 @app.get("/api/search")
 def search_stock(keyword: str):
     items = []
     encoded_kw = urllib.parse.quote(keyword)
     
-    # Unsplash Stock API Engine
+    # Stock API Engine
     try:
         url = f"https://unsplash.com/napi/search/photos?query={encoded_kw}&per_page=20"
         headers = {
@@ -88,20 +47,6 @@ def search_stock(keyword: str):
                     })
     except Exception:
         pass
-
-    # Backup Openverse Stock Engine
-    if len(items) == 0:
-        try:
-            ov_url = f"https://api.openverse.engineering/v1/images/?q={encoded_kw}&page_size=20"
-            res = requests.get(ov_url, timeout=8).json()
-            for img in res.get("results", []):
-                items.append({
-                    "title": (img.get("title") or f"{keyword.title()} Asset").title(),
-                    "thumbnail": img.get("thumbnail") or img.get("url"),
-                    "url": img.get("foreign_landing_url", "#")
-                })
-        except Exception:
-            pass
 
     return {
         "keyword": keyword,
